@@ -6,7 +6,7 @@ All experiments are implemented in Julia 1.6.7 and can be examined as follows.
 
 1. Run Julia by `julia --project=/full_path/to/pgm-eig-prog` where `pgm-eig-prog` is the directory containing the source files.
 2. (Optinal) One can resolve the dependencies by switching to the Pkg mode (type `]`) and executing the command `instantiate`.
-3. The numerical experiment in Section 4.1 can be examined as follows.
+3. The numerical experiment in Section 5.1 can be examined as follows.
 	
 	```
 	include("/full_path/to/pgm-eig-prog/test_inv_eigval.jl")
@@ -17,7 +17,7 @@ All experiments are implemented in Julia 1.6.7 and can be examined as follows.
 it will output the results of each test.
 
 	
-4. The numerical experiment in Section 4.2 can be examined as follows.
+4. The numerical experiment in Section 5.2 can be examined as follows.
 	
 	```
 	include("/full_path/to/pgm-eig-prog/test_quad_const.jl")

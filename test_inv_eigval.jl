@@ -2,7 +2,7 @@
 Numerical experiment for inverse eigenvalue problem:
 	Find x in E such that x in L and lambda(x) = true_lambda
 where
-	E: Jordan Algebra associated with Lorentz(n+1)^m * Semidefinite(n)
+	E: Jordan Algebra associated with Lorentz(n+1)^m * Semidefinite(n)^l
 	L = A_0 + range(A) is a an affine space in E (randomly generated); A: R^d -> E is a linear map
 """
 
@@ -15,22 +15,25 @@ using Plots
 
 include("eig_prog_base.jl")
 
-function generate_random_problem(m,n,d; eig_type=:blockwise)
+function generate_random_problem(l,m,n,d; eig_type=:blockwise)
 	"""
-	m: number of Lorentz cone
+	l: number of PSD cones
+	m: number of Lorentz cones
 	n: variable dimension will be (n+1)*m + n*(n+1)/2
 	d: dimension of affine space L
 	eig_type: :blockwise or :ordered
 	"""
 	
-	# generate FTvN system L^{n+1} * ... * L^{n+1} (m times) * S^n
+	# generate FTvN system L^{n+1} * ... * L^{n+1} (m times) * S^n * ... * S^n (l times)
 	if eig_type == :blockwise
-		FTvN_system = [JAlgebra_SOC(n+1) for i=1:m]
-		push!(FTvN_system, JAlgebra_Sym(n))
+		SOC_part = [JAlgebra_SOC(n+1) for i=1:m]
+		PSD_part = [JAlgebra_Sym(n) for i=1:l]
+		FTvN_system = vcat(SOC_part, PSD_part)
 	elseif eig_type == :ordered
-		F = JAlgebra(); # empty Jordan algebra
-		F.Lorentz = (n+1) * ones(Int64, m); # [n+1, n+1, ..., n+1] of length m
-		F.Semidefinite = [n]; # S^n
+		J = JAlgebra(); # empty Jordan algebra
+		J.Lorentz = (n+1) * ones(Int64, m); # [n+1, n+1, ..., n+1] of length m
+		J.Semidefinite = n * ones(Int64, l); # [n, n, ..., n] of length l
+		FTvN_system = [J]
 	end
 	
 	# generate a linear map A: R^d -> FTvN_system
@@ -85,6 +88,7 @@ end
 
 # instance structure of inverse eigenvalue problem
 mutable struct InvEigInstance
+	l::Int64 # number of Jordan algebra associated to PSD cone
 	m::Int64 # number of Jordan algebra associated to Lorentz cone
 	n::Int64 # n+1 is the dimension of each Lorentz cone
 	d::Int64 # the dimension of input variable in the inverse eigenvalue problem
@@ -104,11 +108,11 @@ mutable struct InvEigInstance
 end
 
 
-function test_inv_eig(m,n,d; stepsize=0.99, eps=1e-3, eig_type=:blockwise, report=true, report_alg=false, max_retry=20, max_iter=10000, seed_value=nothing)
+function test_inv_eig(l,m,n,d; stepsize=0.99, eps=1e-3, eig_type=:blockwise, report=true, report_alg=false, max_retry=20, max_iter=10000, seed_value=nothing)
 	if !isnothing(seed_value)
 		Random.seed!(seed_value);
 	end
-	FTvN_system, A, A_0, true_lambda, x_opt = generate_random_problem(m, n, d; eig_type=eig_type)
+	FTvN_system, A, A_0, true_lambda, x_opt = generate_random_problem(l, m, n, d; eig_type=eig_type)
 	proj_simple_set, recover_c = generate_proj_simple_set(FTvN_system, A, A_0)
 	proj_eig_set(lambda::Array) = true_lambda # projection onto the singleton {true_lambda}
 	
@@ -133,35 +137,35 @@ function test_inv_eig(m,n,d; stepsize=0.99, eps=1e-3, eig_type=:blockwise, repor
 	end
 	
 	inst =	InvEigInstance(
-				m, n, d, seed_value, FTvN_system, A, A_0, true_lambda,
+				l, m, n, d, seed_value, FTvN_system, A, A_0, true_lambda,
 				x_opt, x_0, res.iter_recorder, res.status, res.iter_count, res.cputime, retry, rel_dist_opt
 			)
 	
 	return inst
 end
 
-function get_file_name(m,n,d,eig_type,stepsize,eps,max_iter)
-	return @sprintf("inveig_m=%d_n=%d_d=%d_s=%.3f_e=%g_eig=%s_maxi=%d", m,n,d,stepsize,eps,eig_type,max_iter)
+function get_file_name(l,m,n,d,eig_type,stepsize,eps,max_iter)
+	return @sprintf("inveig_l=%d_m=%d_n=%d_d=%d_s=%.3f_e=%g_eig=%s_maxi=%d", l,m,n,d,stepsize,eps,eig_type,max_iter)
 end
 
-function load_result(m::Int64, n::Int64, d::Int64; save_dir="data", eig_type=:blockwise, stepsize=0.99, eps=1e-3, max_iter=10000)
-	save_path = joinpath(save_dir, get_file_name(m,n,d,eig_type,stepsize,eps,max_iter)*".jld")
+function load_result(l::Int64, m::Int64, n::Int64, d::Int64; save_dir="data", eig_type=:blockwise, stepsize=0.99, eps=1e-3, max_iter=10000)
+	save_path = joinpath(save_dir, get_file_name(l,m,n,d,eig_type,stepsize,eps,max_iter)*".jld")
 	return load(save_path, "results")
 end
 
-function show_test_results(m::Int64, n::Int64, d::Int64;
+function show_test_results(l::Int64, m::Int64, n::Int64, d::Int64;
 	results=nothing, save_dir="data", eig_type=:blockwise, stepsize=0.99, eps=1e-3, max_iter=10000)
 	
 	summary_str(vals) = @sprintf("ave=%.3g, max=%d, min=%d, std=%.3g", mean(vals), maximum(vals), minimum(vals), Statistics.std(vals))
 	
 	if isnothing(results)
-		results = load_result(m,n,d; save_dir=save_dir, eig_type=eig_type, stepsize=stepsize, eps=eps, max_iter=max_iter)
+		results = load_result(l,m,n,d; save_dir=save_dir, eig_type=eig_type, stepsize=stepsize, eps=eps, max_iter=max_iter)
 	end
 	
 	retry_hist = [inst.retry for inst in results]
 	iter_hist = [inst.iter_count for inst in results]
 	
-	print("Finished: m=$m, n=$n, d=$d, eig_type=$eig_type, stepsize=$stepsize, eps=$eps, max_iter=$max_iter, ")
+	print("Finished: l=$l, m=$m, n=$n, d=$d, eig_type=$eig_type, stepsize=$stepsize, eps=$eps, max_iter=$max_iter, ")
 	@printf("iters=(%s), restarts=(%s)\n", summary_str(iter_hist), summary_str(retry_hist))
 end
 
@@ -176,33 +180,34 @@ function run_test(;
 		save_dir		= "data",
 		num_test_inst	= 10,
 		eig_types		= [:blockwise, :ordered], # list of types of FTvN systems to be tested
-		params			= [(m,n,d_ratio) for
+		params			= [(l,m,n,d_ratio) for
 								d_ratio in [0.2*i for i=1:4],
 								n in [10],
-								m in [0,1,5]
+								m in [0,1,5],
+								l in [1,3]
 						]
 	)
 	
 	for eig_type in eig_types
-		for (m, n, d_ratio) in params
-			dimension = m*(n+1) + n*(n+1)/2
+		for (l, m, n, d_ratio) in params
+			dimension = m*(n+1) + l*n*(n+1)/2
 			d = Int(floor(dimension * d_ratio))
 		
-			save_path = joinpath(save_dir, get_file_name(m,n,d,eig_type,stepsize,eps,max_iter)*".jld")
+			save_path = joinpath(save_dir, get_file_name(l,m,n,d,eig_type,stepsize,eps,max_iter)*".jld")
 			if skip_finished && isfile(save_path)
-				results = load_result(m,n,d; eig_type=eig_type, stepsize=stepsize, eps=eps, max_iter=max_iter)
-				show_test_results(m,n,d; results=results, stepsize=stepsize, eps=eps, max_iter=max_iter)
+				results = load_result(l,m,n,d; eig_type=eig_type, stepsize=stepsize, eps=eps, max_iter=max_iter)
+				show_test_results(l,m,n,d; results=results, stepsize=stepsize, eps=eps, max_iter=max_iter)
 				continue
 			end
 		
 			if report
-				println("\n=== TEST m=$m, n=$n, d=$d, stepsize=$stepsize, eps=$eps, eig_type=$eig_type ===")
+				println("\n=== TEST l=$l, m=$m, n=$n, d=$d, stepsize=$stepsize, eps=$eps, eig_type=$eig_type ===")
 			end
 			results = []
 		
 			for i = 1:num_test_inst
-				seed_value = i + m + n
-				inst = test_inv_eig(m,n,d; stepsize=stepsize, eps=eps, report=report, max_iter=max_iter, seed_value=seed_value)
+				seed_value = i + l-1 + m + n
+				inst = test_inv_eig(l,m,n,d; stepsize=stepsize, eps=eps, eig_type=eig_type, report=report, max_iter=max_iter, seed_value=seed_value)
 				push!(results, inst);
 				if report
 					rec = inst.iter_recorder
@@ -223,7 +228,7 @@ function run_test(;
 				save(save_path, "results", results)
 			end
 		
-			show_test_results(m,n,d; results=results, stepsize=stepsize, eps=eps, max_iter=max_iter)
+			show_test_results(l,m,n,d; results=results, stepsize=stepsize, eps=eps, max_iter=max_iter)
 		end
 	end
 end
